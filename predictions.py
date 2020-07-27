@@ -3,6 +3,7 @@ Objective of this code is to predict whether a review was 1 star or 5 stars, bas
 """
 
 # imports
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -14,13 +15,14 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report
 from nltk.corpus import stopwords as sw
+from imblearn.over_sampling import RandomOverSampler
 
 # read in data and split into test/training sets
 reviews = pd.read_csv('data/yelp.csv')
 # remove 2,3,4 start reviews
 reviews = reviews[(reviews['stars'] == 1) | (reviews['stars'] == 5)]
 # split into training / test sets first so that there is no knowledge of test set used during analysis/predictions
-train, test = train_test_split(reviews, test_size=0.3, random_state=0)
+train, test = train_test_split(reviews, test_size=0.3, random_state=0, stratify=reviews['stars'])
 
 '''
 Explore training set
@@ -106,7 +108,6 @@ or whether it was rated as 'cool', 'useful' or 'funny' by other users
 '''
 
 # get test and training sets
-y_map = {1: 0, 5: 1}
 X_train = train['text']
 X_test = test['text']
 y_train = train['stars']
@@ -115,10 +116,8 @@ y_test = test['stars']
 '''
 Predictions using BOW vectorisation only
 '''
-preprocessor = Pipeline([('bow', CountVectorizer())])  # only bag of words
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', MultinomialNB())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer()),
+                              ('model', MultinomialNB())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -134,11 +133,9 @@ weighted avg       0.91      0.91      0.91       818
 '''
 Predictions using BOW vectorisation then apply tf-idf transform
 '''
-preprocessor = Pipeline([('bow', CountVectorizer()),
-                         ('tf-idf', TfidfTransformer())])
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', MultinomialNB())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer()),
+                              ('tf-idf', TfidfTransformer()),
+                              ('model', MultinomialNB())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -164,10 +161,8 @@ stopwords = sw.words('english')
 '''
 Without TF-IDF
 '''
-preprocessor = Pipeline([('bow', CountVectorizer(stop_words=stopwords))])  # only bag of words
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', MultinomialNB())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
+                              ('model', MultinomialNB())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -185,11 +180,9 @@ Slight improvement, which would make sense as we have reduced the noise and ther
 '''
 With TF-IDF
 '''
-preprocessor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
-                         ('tf-idf', TfidfTransformer())])
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', MultinomialNB())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
+                              ('tf-idf', TfidfTransformer()),
+                              ('model', MultinomialNB())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -217,10 +210,8 @@ compared to the important words without TF-IDF
 '''
 
 # without TF-IDF
-preprocessor = Pipeline([('bow', CountVectorizer(stop_words=stopwords))])  # only bag of words
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', RandomForestClassifier())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
+                              ('model', RandomForestClassifier())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -233,47 +224,50 @@ print(results)
 weighted avg       0.90      0.89      0.87      1226
 
 Reduced F1-score but still very good (81%). 
-Weakness in score comes from recall of bad reviews (i.e. many false negatives)
+Weakness in score comes from recall of bad reviews 
+(i.e. many false negatives, wrongly classifying bad reviews as positive)
 
 Which words does the model 'see' as important?
 '''
 word_to_idx = ratings_predictor.named_steps['preprocessor'].named_steps['bow'].vocabulary_  # get vocal list from bow
 idx_to_word = dict((v, k) for k, v in word_to_idx.items())  # swap keys and values in dict
-important_words = pd.Series(ratings_predictor.named_steps['model'].feature_importances_)  # get feature importance
-important_words.index = important_words.index.map(idx_to_word)  # apply mapping to index to get assiciated word
-important_words = important_words.sort_values(ascending=False).iloc[:20]  # sort and get top 20 words
+# get feature importance
+important_words = pd.DataFrame(
+    data=ratings_predictor.named_steps['model'].feature_importances_,
+    columns=['importance'])
+important_words.index = important_words.index.map(idx_to_word)  # apply mapping to index to get associated word
+important_words = important_words.sort_values(by='importance', ascending=False).iloc[:20]  # sort and get top 20 words
 print(important_words)
 '''
-rude          0.015203
-horrible      0.014137
-great         0.010104
-awful         0.009589
-worst         0.008282
-worse         0.006258
-minutes       0.006086
-manager       0.005507
-disgusting    0.005433
-overpriced    0.005409
-bad           0.005251
-slow          0.005016
-mediocre      0.004823
-love          0.004681
-gross         0.004679
-poor          0.004620
-asked         0.004498
-terrible      0.004486
-told          0.004379
-closed        0.004285
+            importance
+horrible      0.014400
+rude          0.013239
+great         0.011034
+awful         0.008815
+worst         0.008308
+bad           0.006641
+disgusting    0.006640
+gross         0.005957
+love          0.005417
+minutes       0.004972
+money         0.004413
+overpriced    0.004130
+worse         0.004047
+mediocre      0.004022
+told          0.003999
+poor          0.003932
+best          0.003675
+star          0.003643
+manager       0.003563
+closed        0.003392
 
 These words seem reasonable to be predicting in bad/good reviews. How about when TF-IDF is used?
 '''
 
 # with TF-IDF
-preprocessor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
-                         ('tf-idf', TfidfTransformer())])
-ratings_predictor = Pipeline([('preprocessor', preprocessor),
-                              ('model', RandomForestClassifier())])\
-    .fit(X_train, y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
+                              ('tf-idf', TfidfTransformer()),
+                              ('model', RandomForestClassifier())]).fit(X_train, y_train)
 y_pred = ratings_predictor.predict(X_test)
 results = classification_report(y_test, y_pred)
 print(results)
@@ -289,36 +283,80 @@ Reduced accuracy due to a drop in recall performance. Which are the important wo
 '''
 word_to_idx = ratings_predictor.named_steps['preprocessor'].named_steps['bow'].vocabulary_  # get vocal list from bow
 idx_to_word = dict((v, k) for k, v in word_to_idx.items())  # swap keys and values in dict
-important_words = pd.Series(ratings_predictor.named_steps['model'].feature_importances_)  # get feature importance
-important_words.index = important_words.index.map(idx_to_word)  # apply mapping to index to get assiciated word
-important_words = important_words.sort_values(ascending=False).iloc[:20]  # sort and get top 20 words
-print(important_words)
+# get feature importance along with IDF
+important_words = pd.DataFrame(
+    data=zip(ratings_predictor.named_steps['model'].feature_importances_,
+             pd.Series(ratings_predictor.named_steps['preprocessor'].named_steps['tf-idf'].idf_).rank(pct=True) * 100),
+    columns=['importance', 'idf_percentile'])
+important_words.index = important_words.index.map(idx_to_word)  # apply mapping to index to get associated word
+important_words = important_words.sort_values(by='importance', ascending=False)  # sort and get top 20 words
+print(important_words.iloc[:20])
 '''
-rude          0.014839
-horrible      0.014500
-great         0.012416
-told          0.007915
-awful         0.007900
-worst         0.007611
-gross         0.006825
-worse         0.006657
-bad           0.006645
-poor          0.006084
-best          0.005340
-manager       0.005022
-business      0.004881
-mediocre      0.004843
-sorry         0.004425
-nothing       0.004282
-slow          0.004204
-avoid         0.004178
-said          0.004175
-disgusting    0.004091
+            importance  idf_percentile
+horrible      0.019370        2.777950
+great         0.011457        0.018644
+rude          0.010433        3.731900
+awful         0.010142        4.698279
+told          0.007669        0.907340
+worst         0.007587        3.570319
+overpriced    0.006144        7.342614
+minutes       0.006126        0.832764
+gross         0.006001        5.829346
+bad           0.005787        0.602821
+poor          0.005511        4.418619
+manager       0.005169        2.262134
+worse         0.004773        4.912684
+slow          0.004624        4.546020
+star          0.004551        2.165807
+disgusting    0.004449        7.699956
+best          0.004381        0.080791
+closed        0.004298        4.253931
+mediocre      0.004255        7.090920
+business      0.004226        1.165248
 
 No obvious difference between the list of words. 
 Both sets are what I'd associate with being able to judge review tone. 
 
-Is there a wider range of 'bad' words used in bad reviews, vs 'good' words used in good reviews?
+idf_percentile shows the percentile for the word's IDF value, when ranked against all other words in the corpus.
+A low percentile shows a lower IDF value - i.e. a less common word. The most common words are the negative ones.
+-> implies bad review words are down-weighted and so perhaps are less meaningful to the model 
+-> model struggles to positively identify bad reviews  
 
-LOOK AT IDF FOR THE LISTS OF WORDS ABOVE. ARE THE BAD WORDS LOWER WEIGHTED?
+Try next: make the 1 star and 5 star reviews more even in number 
+  - perhaps the model is being overfit to positive reviews in some way
+'''
+
+
+'''
+Even sample sizes - try random oversampling to create even class groups
+'''
+X_train_os, y_train_os = RandomOverSampler().fit_sample(X_train.values.reshape(-1, 1), y_train)
+ratings_predictor = Pipeline([('bow', CountVectorizer(stop_words=stopwords)),
+                              ('tf-idf', TfidfTransformer()),
+                              ('model', MultinomialNB())]).fit(np.squeeze(X_train_os), y_train_os)
+y_pred = ratings_predictor.predict(X_test)
+results = classification_report(y_test, y_pred)
+print(results)
+'''
+           precision    recall  f1-score   support
+           1       0.70      0.91      0.79       228
+           5       0.98      0.91      0.94       998
+    accuracy                           0.91      1226
+   macro avg       0.84      0.91      0.87      1226
+weighted avg       0.93      0.91      0.92      1226
+
+Massive improvement, compared to F1-score without oversample, which was:
+              precision    recall  f1-score   support
+           1       0.00      0.00      0.00       228
+           5       0.81      1.00      0.90       998
+    accuracy                           0.81      1226
+   macro avg       0.41      0.50      0.45      1226
+weighted avg       0.66      0.81      0.73      1226
+
+Conclusion: 
+oor performance was due to imbalanced class sizes. 
+Using random oversampling to even the class sizes in the training set improved model F1 score from 0.73 -> 0.92. 
+Improvement was seen in all metrics within the F1 score, but mainly in the recognition performance of the bad 
+reviews (which originally had lower representation in the sample). 
+The model went from having 0% on bad reviews to 0.7 recall & 0.91.
 '''
