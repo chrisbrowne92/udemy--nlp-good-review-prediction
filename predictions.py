@@ -78,13 +78,13 @@ ax = train['num_words'].hist(bins=25)
 ax.set_xlabel('Review length (number of words)')
 ax.set_ylabel('Frequency')
 ax.figure.savefig('plots/01-review_length_distribution.png')
-ax.figure.clf()
 skew = train['num_words'].skew()
 '''
 Stong positive skew (2.4), most reviews are short.
 '''
 
 # how does message length change for different ratings?
+plt.figure()
 g = sns.FacetGrid(train, col='stars', sharex=True)
 g.map(plt.hist, 'num_words', bins=25, density=True)  # density plot to normalise bar height
 g.savefig('plots/02-review_length_for_different_weightings-density_plot.png')
@@ -100,11 +100,13 @@ stars
 '''
 
 # heatmap of correlations
+plt.figure()
 ax = sns.heatmap(train.corr(), annot=True, cmap='coolwarm', vmin=-1, vmax=1)
 ax.figure.savefig('plots/03-correlation_with_stars.png')
 '''
 Number of stars for a review has no correlation to the length of the text, 
-or whether it was rated as 'cool', 'useful' or 'funny' by other users
+or whether it was rated as 'cool', 'useful' or 'funny' by other users.
+--> 'cool', 'useful' or 'funny' will not be used as predictor variables
 '''
 
 # get test and training sets
