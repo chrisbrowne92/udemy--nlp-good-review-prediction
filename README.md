@@ -12,7 +12,7 @@ I wanted to understand why and so did some investigation.
 After some investigation I found that the number of good:bad reviews was approx an 80:20 ratio, and felt it could be 
 that the models were being over-fit to the good reviews in the training set.
 In order to address this, I tried randomly oversampling the training set, in order to build even-sized class groups.
-This was very successful. The performace of the original model, without oversampling was:
+This was very successful. The performance of the original model, without oversampling was:
 ```
               precision    recall  f1-score   support
            1       0.00      0.00      0.00       228
